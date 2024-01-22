@@ -6,11 +6,11 @@ from scipy.optimize import curve_fit
 
 # Defining the class NeutronStarEOS
 class NeutronStarEOS:
-    def __init__(self, EoS): # EoS is either 'APR' or 'SLY4'
+    def __init__(self, EoS): # to initialize the instance, we need EoS='APR' or 'SLY4'
         # Constants from the APR EOS
         self.extrapolate = False
-        self.EoS = EoS.upper()
-        self.default_xi = np.linspace(0, 16, 10000)
+        self.EoS = EoS.upper() # use the UPPERCASE of the input so it can be passed in any "format"
+        self.default_xi = np.linspace(0, 20, 100000) # from rho=1 g/cm^3 to rho=1e16 g/cm^3, the full range of NS
         self.rhos = pow(10, self.default_xi)
         if self.EoS =='APR':
             self.set_APR_params()
@@ -18,7 +18,7 @@ class NeutronStarEOS:
             self.set_SLY4_params()
         else:
             raise ValueError("EoS must be either 'APR' or 'SLY4' ")
-        
+    # APR parameters   
     def set_APR_params(self):
         self.a1 = 6.22
         self.a2 = 6.121
@@ -38,6 +38,8 @@ class NeutronStarEOS:
         self.a16 = -2.976
         self.a17 = 1.99
         self.a18 = 14.93
+    
+    # SLy4 parameters
     def set_SLY4_params(self):
         self.a1  = 6.22
         self.a2  = 6.121
@@ -58,9 +60,11 @@ class NeutronStarEOS:
         self.a17 = 1.50
         self.a18 = 14.67
 
+    # need this for EoS
     def f0(self, x):
         return 1 / (np.exp(x) + 1)
 
+    # EoS parametrization
     def eq_of_state(self, xi=None): # not designed to be called
         term1 = ((self.a1 + self.a2*xi + self.a3*xi**3) / (1 + self.a4*xi)) * self.f0(self.a5 * (xi - self.a6))
         term2 = (self.a7 + self.a8*xi) * self.f0(self.a9 * (self.a10 - xi))
@@ -69,7 +73,9 @@ class NeutronStarEOS:
         return term1 + term2 + term3 + term4
 
 
-    # returns interpolated pressure for solver
+    # returns interpolated pressure for solver. 
+    # extrapolate=True let's you extrapolate to rho=0 but with negative pressures. 
+    # maybe fix later if need to integrate to rho=0
     def get_pressure(self, extrapolate=None):
         if extrapolate is not None:
             self.extrapolate = extrapolate
@@ -81,6 +87,8 @@ class NeutronStarEOS:
         self.rhos = np.power(10, self.default_xi)
         self.pressures = np.power(10, log_pres)
 
+        # if extrapolate=True, extrapolate the pressure to rho=0
+        # not working well due to the introduction of singularities in dP_dRho later
         if extrapolate:
             # Fit a polynomial in the specified range (1 to 2)
             mask = (self.rhos >= 1) & (self.rhos <= 2) #2
@@ -120,6 +128,8 @@ class NeutronStarEOS:
     4) Not working? Repeat
 
     """
+
+    # calculate dP/dRho that we need to change TOV from P'(r) to rho'(r)
     def dP_dRho(self):
         if not hasattr(self, 'interp_pressure'):
             raise ValueError("get_pressure must be called before dP_drho to initialize the interpolated pressure function.")
@@ -139,35 +149,7 @@ class NeutronStarEOS:
 
         return interp_dP_drho
 
-    # returns an array of the dZeta/dXi needed to change the TOV dependent
-    # variable from the pressure to density
-    def dZeta_dXi(self):
-        if not hasattr(self, 'rhos') or not hasattr(self, 'pressures'):
-            raise ValueError("get_pressure must be called before dZeta_dXi to initialize rho_values and pressures.")
-
-        # Calculate xi and dZeta_values
-        zeta_values = np.log10(self.pressures)
-        self.dZeta_values = np.gradient(zeta_values, self.default_xi)
-
-        # Interpolation
-        #interp_func = interp1d(self.rhos, self.dZeta_values, kind='cubic')
-
-        return np.vectorize(interp_func)
-    
-    def dP_drho(self, rho_c):
-        # Get the interpolating functions
-        pressure_interp = self.get_pressure(self.extrapolate)
-        dZeta_dXi_interp = self.dZeta_dXi()
-
-        # Get interpolated values of pressure and dZeta/dXi at rho_c
-        pressure_at_rho_c = pressure_interp(rho_c)
-        dZeta_dXi_at_rho_c = dZeta_dXi_interp(rho_c)
-
-        # Calculate dP/drho at rho_c
-        dP_drho_at_rho_c = pressure_at_rho_c / rho_c * dZeta_dXi_at_rho_c * np.log(10)
-
-        return dP_drho_at_rho_c
-    # plot dZeta/dXi
+  
     # plot the EoS
     def plot_EoS(self, log_scale=True, debug=False):
         # Use the rhos and pressures from the class attributes
@@ -189,25 +171,7 @@ class NeutronStarEOS:
         plt.grid(True)
         plt.show()
     #
-    def plot_dZeta_dXi(self, log_scale=True, debug=False):
-        rhos = self.rhos
-        interp_dZeta = self.dZeta_dXi()
-        DZetaDXi = interp_dZeta(rhos)
-        plt.figure(figsize=(10, 4))
-        plt.plot(rhos, DZetaDXi, color='blue')
-        plt.xlabel(r'$\rho (g.cm^{-3})$')
-        plt.ylabel(r'$d\zeta/d\xi$')
-        plt.title(self.EoS + ' Equation of State Gradient')
-        if debug:
-            plt.xlim(0.8, 3)
-            plt.ylim(0,1e7)
-            log_scale=False
-        if log_scale:
-            plt.xscale('log')
-            plt.yscale('log')
-        plt.grid(True)
-        plt.show()
-        
+    # call to plot dP_drho
     def plot_dP_drho(self, log_scale=True, debug=False):
         interp_dP_drho = self.dP_dRho()
         rhos = self.combined_rhos if self.extrapolate else self.rhos

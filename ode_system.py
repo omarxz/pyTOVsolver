@@ -20,11 +20,11 @@ mu =(NeutronMass)/(1e-25) * PhiFaGeVToCGs # (*GeV*)
 #ri = 1e-15
 #rf = 10^8
 
-def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c):
+def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c, ri):
     """Create a boundary conditions function with specific initial conditions."""
     
     P = eos_class.get_pressure()
-    dPdrho = eos_class.dP_drho(rho_c) # need to make this method
+    dPdrho = eos_class.dP_dRho() # need to make this method
     nu_initial = nu_c + (4 * G * np.pi * ri**2 * \
                             (-2 * fa**2 * ma**2 * mu - 2 * a_c * c**2 * fa * rho_c + \
                             c**2 * mu * rho_c + 2 * fa**2 * ma**2 * mu * np.cos(a_c) + \
@@ -34,7 +34,7 @@ def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c):
                  (fa**2 * ma**2 * mu + a_c * c**2 * fa * rho_c + c**2 * mu * rho_c -  \
                   fa**2 * ma**2 * mu * np.cos(a_c))) / (3 * c**4 * mu)
     
-    rho_initial = rho_c - 1/(6 * mu * dPdrho) * ri**2 * (
+    rho_initial = rho_c - 1/(6 * mu * dPdrho(rho_c)) * ri**2 * (
         (4 * G * np.pi * rho_c * \
          (-2 * fa**2 * ma**2 * mu - 2 * a_c * c**2 * fa * rho_c + c**2 * mu * rho_c + 2 * fa**2 * ma**2 * mu * np.cos(a_c) + 3 * mu * P(rho_c))) \
             / c**2 + (4 * G * np.pi * P(rho_c) * (-2 * fa**2 * ma**2 * mu - 2 * a_c * c**2 * fa * rho_c + \
@@ -46,7 +46,7 @@ def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c):
     def boundary_conditions(ya, yb):
         return np.array([
             ya[1],                 #  ya[1] a_prime(ri) = 0
-            yb[1],                 # a_prime(rf) = 0
+            ya[0] - a_initial_guess,                 #  yb[1] a_prime(rf) = 0
             ya[2] - nu_initial,    # nu(ri) = nu_initial
             ya[3] - llambda_initial, # lambda(ri) = lambda_initial
             ya[4] - rho_initial    # rho(ri) = rho_initial
@@ -61,25 +61,18 @@ def tanh_transition_function(rho, rho_threshold=1, steepness=10):
 debug_info = []
 #
 #
-def ode_system(r, y, P, dZetadXi):
+def ode_system(r, y, P, dPdRho):
 
     a, a_prime, nu, llambda, rho = y
     # switch the system when rho reaches 1
     # Debugging output
-    if np.any(rho <= 1):
-        debug_info.append((r, rho))
-        return np.zeros_like(y)
+    #if np.any(rho <= 1):
+    #    debug_info.append((r, rho))
+    #   return np.zeros_like(y)
     
-    transition = tanh_transition_function(rho)
-
-    #P_rho = np.where(rho>1, P(rho), 0)
-    P_rho = P(rho)
-    #dZetadXi_rho = np.where(rho>1, dZetadXi(rho),5)
-    dZetadXi_rho = dZetadXi(rho)
-
 
     # Metric Potential equation
-    expression_for_metric_pot = -1/r + np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * P_rho)/c**4 - \
+    expression_for_metric_pot = -1/r + np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * P(rho))/c**4 - \
                                 (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2 * mu * (-1 + np.cos(a)) + \
                                 c**2 * a * rho))/(c**4 * mu) + \
                                 (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
@@ -87,7 +80,7 @@ def ode_system(r, y, P, dZetadXi):
     dnu_dr = expression_for_metric_pot
 
     # Mass equation
-    expression_for_mass = 1/r - np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * P_rho)/c**4 + \
+    expression_for_mass = 1/r - np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * P(rho))/c**4 + \
                           (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2 * mu * (-1 + np.cos(a)) + \
                           c**2 * a * rho))/(c**4 * mu) + \
                           (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
@@ -100,17 +93,18 @@ def ode_system(r, y, P, dZetadXi):
     #
     da_prime_dr = expression_for_KG
 
-    # TOV equationß
-    expression_for_TOV = transition * (-((fa * rho * ((3 * P_rho) / mu - (c**2 * rho) / mu) * a_prime) / (dZetadXi_rho * P_rho)) - \
-                        (rho * (P_rho + c**2 * rho) * dnu_dr) / (2 * dZetadXi_rho * P_rho))
-    #
-    drho_dr = expression_for_TOV#np.where(rho>1, expression_for_TOV, 0)
+    # TOV equation
+    #expression_for_TOV =  -(fa / mu * a_prime * (3 * P(rho) - c**2 * rho ) + (P(rho) + c**2 * rho) * dnu_dr /2 ) / dPdRho(rho)
+    expression_for_TOV = - (P(rho) + c**2 * rho) * dnu_dr / 2 # GR part
+    expression_for_TOV += - fa / mu * a_prime * (3 * P(rho) - c**2 * rho) # Axion part: change this for different theories
+    expression_for_TOV /= dPdRho(rho) # used chain rule to take P'(r) to rho'(r)
+    
+    drho_dr = expression_for_TOV
 
     return np.array([a_prime, da_prime_dr, dnu_dr, dllambda_dr, drho_dr])
 #
 #
-#
-#
+
 def central_densities(lower_limit, upper_limit, n_points):
     densities = np.logspace(np.log10(lower_limit), np.log10(upper_limit), n_points)
     return densities
