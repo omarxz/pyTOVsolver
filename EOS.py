@@ -10,7 +10,7 @@ class NeutronStarEOS:
         # Constants from the APR EOS
         self.extrapolate = False
         self.EoS = EoS.upper() # use the UPPERCASE of the input so it can be passed in any "format"
-        self.default_xi = np.linspace(0, 20, 100000) # from rho=1 g/cm^3 to rho=1e16 g/cm^3, the full range of NS
+        self.default_xi = np.linspace(0, 50, 100000) # from rho=1 g/cm^3 to rho=1e16 g/cm^3, the full range of NS
         self.rhos = pow(10, self.default_xi)
         if self.EoS =='APR':
             self.set_APR_params()
@@ -35,7 +35,7 @@ class NeutronStarEOS:
         self.a13 = 2.3
         self.a14 = 14.81
         self.a15 = 29.80
-        self.a16 = -2.976
+        self.a16 =-2.976
         self.a17 = 1.99
         self.a18 = 14.93
     
@@ -65,7 +65,7 @@ class NeutronStarEOS:
         return 1 / (np.exp(x) + 1)
 
     # EoS parametrization
-    def eq_of_state(self, xi=None): # not designed to be called
+    def eq_of_state(self, xi=None, steepness=2): # not designed to be called
         term1 = ((self.a1 + self.a2*xi + self.a3*xi**3) / (1 + self.a4*xi)) * self.f0(self.a5 * (xi - self.a6))
         term2 = (self.a7 + self.a8*xi) * self.f0(self.a9 * (self.a10 - xi))
         term3 = (self.a11 + self.a12*xi) * self.f0(self.a13 * (self.a14 - xi))
@@ -76,9 +76,10 @@ class NeutronStarEOS:
     # returns interpolated pressure for solver. 
     # extrapolate=True let's you extrapolate to rho=0 but with negative pressures. 
     # maybe fix later if need to integrate to rho=0
-    def get_pressure(self, extrapolate=None):
-        if extrapolate is not None:
+    def get_pressure(self, extrapolate=None, steepness=14.322328):
+        if extrapolate:
             self.extrapolate = extrapolate
+            self.steepness = steepness
         if not isinstance(self.default_xi, Iterable) or isinstance(self.default_xi, str):
             raise ValueError("Input must be an iterable object like a list or a NumPy array.")
             
@@ -91,26 +92,18 @@ class NeutronStarEOS:
         # not working well due to the introduction of singularities in dP_dRho later
         if extrapolate:
             # Fit a polynomial in the specified range (1 to 2)
-            mask = (self.rhos >= 1) & (self.rhos <= 2) #2
-            fit_rhos = np.insert(self.rhos[mask], 0, 0.0)
-            fit_pressures = np.insert(self.pressures[mask], 0, 0.0)
-            degree = 12 #12
-            coeffs = np.polyfit(fit_rhos, fit_pressures, degree)
-            polynomial = np.poly1d(coeffs)
-
-            # Extrapolate pressure for rho < 1 using the polynomial
-            rho_extrapolate = np.linspace(0, max(fit_rhos), 100000)
-            extrapolated_pressure = polynomial(rho_extrapolate)
-
+            og_rhos = self.rhos
+            og_pressures = self.pressures
+            self.rho_tanh = np.linspace(0, 0.999, 500)
+            #self.pressure_tanh = 2.18e6*np.tanh(self.rho_tanh*steepness)
+            self.pressure_tanh = np.exp(self.rho_tanh*steepness) - 1
             # Combine extrapolated pressures with pressures from EoS
-            combined_pressures = np.concatenate((extrapolated_pressure, self.pressures[self.rhos >= 1]))
-            combined_rhos = np.concatenate((rho_extrapolate, self.rhos[self.rhos >= 1]))
+            combined_pressures = np.concatenate((self.pressure_tanh, self.pressures[self.rhos >= 1]))
+            combined_rhos = np.concatenate((self.rho_tanh, self.rhos[self.rhos >= 1]))
 
-            
             # Ensure unique and sorted values for combined_rhos
             self.combined_rhos, indices = np.unique(combined_rhos, return_index=True)
             unique_combined_pressures = combined_pressures[indices]
-            print(f"At rho={self.combined_rhos[0]}, P = {unique_combined_pressures[0]}")
             # Create an interpolated function covering the entire range
             self.interp_pressure = interp1d(self.combined_rhos, unique_combined_pressures, kind='cubic')
 
@@ -119,48 +112,80 @@ class NeutronStarEOS:
             self.interp_pressure = interp1d(self.rhos, self.pressures, kind='cubic')
             return self.interp_pressure
 
+    # theoretical equation for dZetadXi from mathematica
+    def dZetadXi(self):
+        term1 = 1.4365 / (1 + np.exp(4.75 * (11.5756 - np.log10(self.rhos))))
+        term2 = 3.8175 / (1 + np.exp(2.3 * (14.81 - np.log10(self.rhos))))
+        term3 = -2.976 / (1 + np.exp(1.99 * (14.93 - np.log10(self.rhos))))
+        term4 = (1.99 * np.exp(1.99 * (14.93 - np.log10(self.rhos))) * (29.8 - 2.976 * np.log10(self.rhos))) / (1 + np.exp(1.99 * (14.93 - np.log10(self.rhos))))**2
+        term5 = (4.75 * np.exp(4.75 * (11.5756 - np.log10(self.rhos))) * (12.589 + 1.4365 * np.log10(self.rhos))) / (1 + np.exp(4.75 * (11.5756 - np.log10(self.rhos))))**2
+        term6 = (2.3 * np.exp(2.3 * (14.81 - np.log10(self.rhos))) * (-42.489 + 3.8175 * np.log10(self.rhos))) / (1 + np.exp(2.3 * (14.81 - np.log10(self.rhos))))**2
+        term7 = (6.121 + 0.018105 * np.log10(self.rhos)**2) / ((1 + np.exp(4.73 * (-11.5831 + np.log10(self.rhos)))) * (1 + 0.16354 * np.log10(self.rhos)))
+        term8 = -0.16354 * (6.22 + 6.121 * np.log10(self.rhos) + 0.006035 * np.log10(self.rhos)**3) / ((1 + np.exp(4.73 * (-11.5831 + np.log10(self.rhos)))) * (1 + 0.16354 * np.log10(self.rhos))**2)
+        term9 = -4.73 * np.exp(4.73 * (-11.5831 + np.log10(self.rhos))) * (6.22 + 6.121 * np.log10(self.rhos) + 0.006035 * np.log10(self.rhos)**3) / ((1 + np.exp(4.73 * (-11.5831 + np.log10(self.rhos))))**2 * (1 + 0.16354 * np.log10(self.rhos)))
+        
+        dZetdXi = term1 + term2 + term3 + term4 + term5 + term6 + term7 + term8 + term9
+
+        if self.extrapolate:
+            #rho_to_0 = np.linspace(0,0.999,100)
+            dZeta_to_0 = np.exp(-self.rho_tanh) + 2 * dZetdXi[0] - 5.47166064
+            dZetdXi = np.concatenate([dZeta_to_0, dZetdXi])
+            #self.rho_full = np.concatenate([rho_to_0, self.rhos])
+            interp_dZeta_dXi = interp1d(self.combined_rhos, dZetdXi, kind='cubic')
+            return interp_dZeta_dXi
+        else:
+            interp_dZeta_dXi_norm= interp1d(self.rhos, dZetdXi, kind='cubic')
+            return interp_dZeta_dXi_norm
+
     """
-    Need to make this work:
-
-    1) Check dP_dRho is working well
-    2) Either get dZeta/dXi correctly or directly get dP/drho and check for sanity
-    3) Try to solve the system till rho = 1 again with the right derivative.
-    4) Not working? Repeat
-
+    Code this here! Then compare to Mathematica and move forward if matches
     """
-
     # calculate dP/dRho that we need to change TOV from P'(r) to rho'(r)
     def dP_dRho(self):
         if not hasattr(self, 'interp_pressure'):
             raise ValueError("get_pressure must be called before dP_drho to initialize the interpolated pressure function.")
+        dZeta = self.dZetadXi()
+        P = self.interp_pressure
+        if self.extrapolate:
+            dPdRho = dZeta(self.combined_rhos[1:]) * P(self.combined_rhos[1:])/self.combined_rhos[1:]
+            dPdRho = np.insert(dPdRho, 0, 82)
+            self.interp_dPdRho = interp1d(self.combined_rhos, dPdRho, kind='cubic')
+            return self.interp_dPdRho
+        else:
+            dPdRho = dZeta(self.rhos) * P(self.rhos)/self.rhos
+            self.interp_dPdRho = interp1d(self.rhos, dPdRho, kind='cubic')
+            return self.interp_dPdRho
 
-        # Define a fine grid of rho values for differentiation
-        #rho_fine = np.linspace(0, 1, 100000, endpoint=False)
-        #rho_range = np.concatenate([rho_fine, self.rhos])
-        # Evaluate the interpolated pressure function on this fine grid
+    def plot_dZeta_dXi(self, log_scale=True, debug=False):
+        interp_dZeta = self.dZetadXi()
         rhos = self.combined_rhos if self.extrapolate else self.rhos
-        pressure_fine = self.interp_pressure(rhos)
+        DZetaDXi = interp_dZeta(rhos)
+        plt.figure(figsize=(10, 4))
+        plt.plot(rhos, DZetaDXi, color='blue')
+        plt.xlabel(r'$Log_{10}(\rho [g.cm^{-3}])$')
+        plt.ylabel(r'$d\zeta/d\xi$')
+        plt.title(self.EoS + ' Equation of State Gradient')
+        if debug:
+            plt.xlim(0, 1.5)
+            plt.ylim(0,6)
+            log_scale=False
+        if log_scale:
+            plt.xscale('log')
+            plt.yscale('log')
+        plt.grid(True)
+        plt.show()
 
-        # Calculate the derivative of pressure with respect to rho
-        dP_drho_values = np.gradient(pressure_fine, rhos)
-
-        # Create an interpolated function for dP/drho
-        interp_dP_drho = interp1d(rhos, dP_drho_values, kind='cubic', fill_value="extrapolate")
-
-        return interp_dP_drho
-
-  
     # plot the EoS
     def plot_EoS(self, log_scale=True, debug=False):
         # Use the rhos and pressures from the class attributes
-        interp_pres = self.get_pressure(self.extrapolate)
+        interp_pres = self.interp_pressure
         rhos = self.combined_rhos if self.extrapolate else self.rhos
         pres = interp_pres(rhos)
         plt.figure(figsize=(10, 4))
         plt.plot(rhos, pres, color='blue')
         if debug:
-            plt.xlim(0.8, 3)
-            plt.ylim(0,1e7)
+            plt.xlim(0, 1.1)
+            plt.ylim(0,1.75e6)
             log_scale = False
         if log_scale:
             plt.xscale('log')
@@ -172,10 +197,10 @@ class NeutronStarEOS:
         plt.show()
     #
     # call to plot dP_drho
-    def plot_dP_drho(self, log_scale=True, debug=False):
+    def plot_dP_dRho(self, log_scale=True, debug=False):
         interp_dP_drho = self.dP_dRho()
         rhos = self.combined_rhos if self.extrapolate else self.rhos
-        dP_drho = interp_dP_drho(rhos)
+        dP_drho = self.interp_dPdRho(rhos)
         plt.figure(figsize=(10, 4))
         plt.plot(rhos, dP_drho, color='blue')
         plt.xlabel(r'$\rho (g.cm^{-3})$')
@@ -190,3 +215,29 @@ class NeutronStarEOS:
             plt.yscale('log')
         plt.grid(True)
         plt.show()
+
+# old get_pressure() extrapolate
+"""if extrapolate:
+    # Fit a polynomial in the specified range (1 to 2)
+    mask = (self.rhos >= 1) & (self.rhos <= 2) #2
+    fit_rhos = np.insert(self.rhos[mask], 0, 0.0)
+    fit_pressures = np.insert(self.pressures[mask], 0, 0.0)
+    degree = 12 #12
+    coeffs = np.polyfit(fit_rhos, fit_pressures, degree)
+    polynomial = np.poly1d(coeffs)
+
+    # Extrapolate pressure for rho < 1 using the polynomial
+    rho_extrapolate = np.linspace(0, max(fit_rhos), 100000)
+    extrapolated_pressure = polynomial(rho_extrapolate)
+
+    # Combine extrapolated pressures with pressures from EoS
+    combined_pressures = np.concatenate((extrapolated_pressure, self.pressures[self.rhos >= 1]))
+    combined_rhos = np.concatenate((rho_extrapolate, self.rhos[self.rhos >= 1]))
+
+    
+    # Ensure unique and sorted values for combined_rhos
+    self.combined_rhos, indices = np.unique(combined_rhos, return_index=True)
+    unique_combined_pressures = combined_pressures[indices]
+    print(f"At rho={self.combined_rhos[0]}, P = {unique_combined_pressures[0]}")
+    # Create an interpolated function covering the entire range
+    self.interp_pressure = interp1d(self.combined_rhos, unique_combined_pressures, kind='cubic')"""
