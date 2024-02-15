@@ -156,7 +156,7 @@ if __name__ == "__main__":
         print(f"Number of workers being used: {executor._max_workers}")
         stars_solutions = list(executor.map(compute_for_rho_c, rho_c_values))
         # Save to a pickle file
-        pickle_file_path = 'stars_solutions.pkl'  # You can choose any file name
+        pickle_file_path = 'stars_solutions_ma_11.pkl'  # You can choose any file name
         with open(pickle_file_path, 'wb') as file:
             pickle.dump(stars_solutions, file)
 
