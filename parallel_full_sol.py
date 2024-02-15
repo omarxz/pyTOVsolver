@@ -17,7 +17,7 @@ warnings.filterwarnings("ignore", message="`tol` is too low, setting to 2.22e-14
 
 # Detect the number of cores/processors
 num_cores = os.cpu_count()
-print(f"Number of cores detected: {num_cores}\n")
+print(f"[{os.getpid()}] Number of cores detected: {num_cores}\n")
 
 # load eos, it's the same for all workers so we can keep it global
 apr_eos = NeutronStarEOS('APR')
@@ -36,7 +36,6 @@ def inside_ivp_wrapper(r, y):
 
 # IVP solver
 def solve_interior(initial_conditions):
-    print(f"##################################################")
     print(f"[{os.getpid()}] Solving the interior....")
     # Solve the ivp
     sol = solve_ivp(inside_ivp_wrapper, [r_center,r_rad], initial_conditions, method='LSODA', events = stop_at_small_r_step)
@@ -52,11 +51,10 @@ def solve_interior(initial_conditions):
     # Process the solution
     # Check if the solution is successful and process it
     if sol.success:
-        print("[{os.getpid()}] IVP Solution found!")
+        print(f"[{os.getpid()}] IVP Solution found!")
         print("     ",sol.message)
     else:
-        print("     Solution was not successful.")
-        print(f"---------------------------------------------\n")
+        print(f"[{os.getpid()}] Solution was not successful.")
         print(sol.message)
     return sol, a_in, a_prime_in, nu_in, llambda_in, rho, radius
 
@@ -73,17 +71,58 @@ def solve_bvp_outside(r_outside, y_initial, outside_bc_func):
     # Check if the solution is successful and process it
     if sol.success:
         print(f"[{os.getpid()}] BVP Solution found!")
-        print(f"---------------------------------------------\n")
     else:
-        print("     Solution was not successful.")
-        print(f"---------------------------------------------\n")
+        print(f"[{os.getpid()}] Solution was not successful.")
 
     return sol, a_out, a_prime_out, nu_out, llambda_out
 
 
+def full_solve(a_c, rho_c):
+
+    initial_conditions = create_boundary_conditions(eos_class=apr_eos,
+    rho_c=rho_c,
+    nu_c=1,
+    lambda_c=0,
+    a_c=a_c,
+    ri=r_center 
+    )
+    sol_interior, a_in, a_prime_in, nu_in, llambda_in, rho, radius = solve_interior(initial_conditions)
+
+    # Extract boundary conditions at R from the interior solution
+    a_R = a_in[-1]  # a at the surface
+    a_prime_R = a_prime_in[-1]  # a' at the surface
+    nu_R = nu_in[-1]
+    llambda_R = llambda_in[-1]
+
+    # mesh for outside solution
+    r_far = 2e8
+    r_outside = create_r_mesh(radius,r_far,4000)
+    # Update the boundary conditions for the exterior problem
+    outside_bc_func = create_outside_bc(a_R, a_prime_R, nu_R, llambda_R)
+
+    # gues initial solution
+    y_initial = np.zeros((4, r_outside.size))  # Initialize the array with zeros
+    y_initial[0, :] = np.linspace(a_R, 0, len(r_outside))
+    # linearly interpolate the remaining values of a(r) from ac to final_value_a
+    y_initial[1, :] = np.linspace(a_prime_R, 0, len(r_outside))  # a_prime(r)
+    y_initial[2, :] = nu_R  # nu(r)
+    y_initial[3, :] = llambda_R  # llambda(r)
+    # Step 2: Solve the exterior problem with these boundary conditions
+    sol_exterior, a_out, a_prime_out, nu_out, llambda_out = solve_bvp_outside(r_outside, y_initial, outside_bc_func)
+    mass = c**2 * r_outside[-1] / (2*G) * (1. - np.exp(-llambda_out[-1]))/Msun
+
+    results = {
+    "a_c": a_c, "radius": radius, "mass": mass, "rho": rho, "a_in": a_in, "a_out": a_out, "a_prime_in": a_prime_in*1e5, "a_prime_out": a_prime_out*1e5,
+    "nu_in": nu_in, "nu_out": nu_out, "llambda_in": llambda_in, "llambda_out": llambda_out, 
+    "r_inside": sol_interior.t, "r_outside": r_outside
+    }
+
+    return results
+
 def continuity_cost(a_initial_guess, rho_c):
     # Step 1: Solve the interior problem with the current guess for a_initial
-    a_initial_guess = a_initial_guess[0]
+    if not np.isscalar(a_initial_guess):
+        a_initial_guess = a_initial_guess[0]
     print(f"[{os.getpid()}] Updated guess: {a_initial_guess}")
 
     initial_conditions = create_boundary_conditions(eos_class=apr_eos,
@@ -122,64 +161,63 @@ def continuity_cost(a_initial_guess, rho_c):
     if not sol_exterior.success:
         return np.inf  # Penalize failed solutions heavily
     mass = c**2 * r_outside[-1] / (2*G) * (1. - np.exp(-llambda_out[-1]))/Msun
-
-    optimized_sol = {
-    "a_c": a_initial_guess, "radius": radius, "mass": mass, "rho": rho, "a_in": a_in, "a_out": a_out, "a_prime_in": a_prime_in, "a_prime_out": a_prime_out,
-    "nu_in": nu_in, "nu_out": nu_out, "llambda_in": llambda_in, "llambda_out": llambda_out, 
-    "r_inside": sol_interior.t, "r_outside": r_outside
-    }
     # Compute the cost: Here, we aim for a smooth transition, so ideally, a_out[0] - a_R should be close to 0
     # and a_prime_out[0] - a_prime_R should be close to 0. Adjust the cost function as needed.
     cost_a = (a_out[0] - a_R)**2   # Simple squared difference
     cost_a_prime = (a_prime_out[0] - a_prime_R)**2
     cost = cost_a+cost_a_prime
     
-    return cost, optimized_sol
+    return cost
 
-def cost_wrapper(a_initial_guess, rho_c):
-        cost, optimized_sol = continuity_cost(a_initial_guess, rho_c)
-        return cost
 
 def compute_for_rho_c(rho_c):
+    print(f"[{os.getpid()}] Optimizing for rho_c = {rho_c:0.3e} g/cm^(3)")
     a_minimized = axion_initial_guess(rho_c)
     # Wrap the call to continuity_cost so it returns only the cost to minimize
-    result = minimize(cost_wrapper, a_minimized, args=(rho_c,), method='Nelder-Mead', options={'maxiter': 100, 'xatol': 1e-9})
+    result = minimize(continuity_cost, a_minimized, args=(rho_c,), method='Nelder-Mead', options={'maxiter': 100, 'xatol': 1e-9})
     if result.success:
-        _, optimized_sol = continuity_cost(result.x[0], rho_c)  # Re-compute or retrieve the last optimized solution
-        return optimized_sol
+        print(f"[{os.getpid()}] Found a_c = {result.x[0]} for rho_c = {rho_c:0.3e} g/cm^(3)")
+        return {'rho_c': rho_c, 'a_c': result.x[0]}
     else:
+        print(f"[{os.getpid()}] Optimization failed for rho_c = {rho_c:0.3e}")
         return None
-
-"""if __name__ == "__main__":
-    rho_c_values = [10**i for i in np.linspace(14.7, 15.5, num_cores)]
-    with ProcessPoolExecutor(max_workers=num_cores) as executor:
-        print(f"Number of workers being used: {executor._max_workers}")
-        stars_solutions = list(executor.map(compute_for_rho_c, rho_c_values))
-        # Save to a pickle file
-        pickle_file_path = 'stars_solutions_ma_11.pkl'  # You can choose any file name
-        with open(pickle_file_path, 'wb') as file:
-            pickle.dump(stars_solutions, file)
-
-        print(f'Saved stars_solutions to {pickle_file_path}')
-
-"""
-
-def compute_wrapper(args):
-    rho_c, index, total = args
-    result = compute_for_rho_c(rho_c)
-    print(f"Completed {index + 1}/{total} stars.")
-    return result
 
 if __name__ == "__main__":
     rho_c_values = [10**i for i in np.linspace(14.7, 15.85, num_cores)]
-    total_stars = len(rho_c_values)
-    args_list = [(rho_c, index, total_stars) for index, rho_c in enumerate(rho_c_values)]
-
+    # Use ProcessPoolExecutor to parallelize the optimization
     with ProcessPoolExecutor() as executor:
-        stars_solutions = list(executor.map(compute_wrapper, args_list))
-
+        futures = [executor.submit(compute_for_rho_c, rho_c) for rho_c in rho_c_values]
+        results = [future.result() for future in futures if future.result() is not None]
     # Save to a pickle file
-    pickle_file_path = 'stars_solutions_ma_11.pkl'
+    pickle_file_path = 'rho_ac_ma_11.pkl'
     with open(pickle_file_path, 'wb') as file:
-        pickle.dump(stars_solutions, file)
-    print(f'Saved stars_solutions to {pickle_file_path}')
+        pickle.dump(results, file)
+    print(f"Saved dict of rho_c and a_c to {pickle_file_path}")
+
+print("Optimization is complete. Now, let's calculate the full solution. Wohooooo!")
+
+# Load the contents of the pickle file
+with open('rho_ac_ma_11.pkl', 'rb') as file:
+    optimization_results = pickle.load(file)
+
+# Define a wrapper function that takes a single argument, for the executor.map method
+def compute_full_solution(result):
+    rho_c = result['rho_c']
+    a_c = result['a_c']
+    
+    # Compute the full solution for the given rho_c and a_c
+    full_solution = full_solve(a_c, rho_c)
+    return full_solution
+
+print("Calculating full solutions in parallel...........")
+
+# Use ProcessPoolExecutor to parallelize the full solution computation
+with ProcessPoolExecutor() as executor:
+    # Map each optimization result to the compute_full_solution function
+    full_solutions = list(executor.map(compute_full_solution, optimization_results))
+
+# Save the full solutions to a new pickle file for further analysis
+with open('full_star_solutions.pkl', 'wb') as file:
+    pickle.dump(full_solutions, file)
+
+print(f"Calculated full solutions for {len(full_solutions)} stars and saved to 'full_solutions.pkl'")
