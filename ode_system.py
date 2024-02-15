@@ -25,7 +25,7 @@ def axion_initial_guess(rho_c):
     a_minimum = -np.arcsin(rho_c_over_rho_crit) 
     print(f"rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
     if rho_c_over_rho_crit<1:
-        print(f"Minima exist with a_minimum = {a_minimum}")
+        print(f"Minima exist.")
     else:
         print('Minima do not exist; entering the destabilization regime.')
     return a_minimum

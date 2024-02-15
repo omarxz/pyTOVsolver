@@ -1,4 +1,5 @@
 import os
+import pickle
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -9,6 +10,10 @@ from EOS import NeutronStarEOS
 from ode_system import *
 from omars_little_helpers import *
 from concurrent.futures import ProcessPoolExecutor #to parallize computations
+import warnings
+
+# Ignore specific SciPy UserWarnings regarding tolerance levels
+warnings.filterwarnings("ignore", message="`tol` is too low, setting to 2.22e-14")
 
 # Detect the number of cores/processors
 num_cores = os.cpu_count()
@@ -31,7 +36,8 @@ def inside_ivp_wrapper(r, y):
 
 # IVP solver
 def solve_interior(initial_conditions):
-    print("     Solving the interior....")
+    print(f"##################################################")
+    print(f"[{os.getpid()}] Solving the interior....")
     # Solve the ivp
     sol = solve_ivp(inside_ivp_wrapper, [r_center,r_rad], initial_conditions, method='LSODA', events = stop_at_small_r_step)
 
@@ -46,17 +52,16 @@ def solve_interior(initial_conditions):
     # Process the solution
     # Check if the solution is successful and process it
     if sol.success:
-        print("     IVP Solution found!")
+        print("[{os.getpid()}] IVP Solution found!")
         print("     ",sol.message)
-        print(f"    ---------------------------------------------\n")
     else:
         print("     Solution was not successful.")
-        print(f"    ---------------------------------------------\n")
+        print(f"---------------------------------------------\n")
         print(sol.message)
     return sol, a_in, a_prime_in, nu_in, llambda_in, rho, radius
 
 def solve_bvp_outside(r_outside, y_initial, outside_bc_func):
-    print("     Solving the exterior....")
+    print(f"[{os.getpid()}] Solving the exterior....")
     sol = solve_bvp(outside_bvp_system, outside_bc_func, r_outside, y_initial, max_nodes=1000000, tol=2.21e-14)
 
     # Process the solution
@@ -67,11 +72,11 @@ def solve_bvp_outside(r_outside, y_initial, outside_bc_func):
 
     # Check if the solution is successful and process it
     if sol.success:
-        print('     BVP Solution found!')
-        print(f"    ---------------------------------------------\n")
+        print(f"[{os.getpid()}] BVP Solution found!")
+        print(f"---------------------------------------------\n")
     else:
         print("     Solution was not successful.")
-        print(f"    ---------------------------------------------\n")
+        print(f"---------------------------------------------\n")
 
     return sol, a_out, a_prime_out, nu_out, llambda_out
 
@@ -79,7 +84,7 @@ def solve_bvp_outside(r_outside, y_initial, outside_bc_func):
 def continuity_cost(a_initial_guess, rho_c):
     # Step 1: Solve the interior problem with the current guess for a_initial
     a_initial_guess = a_initial_guess[0]
-    print(f"Initial guess: {a_initial_guess}")
+    print(f"[{os.getpid()}] Updated guess: {a_initial_guess}")
 
     initial_conditions = create_boundary_conditions(eos_class=apr_eos,
         rho_c=rho_c,
@@ -146,7 +151,14 @@ def compute_for_rho_c(rho_c):
         return None
 
 if __name__ == "__main__":
-    rho_c_values = [10**i for i in np.linspace(14.7, 16.25, 10)]
+    rho_c_values = [10**i for i in np.linspace(14.7, 15.5, num_cores)]
     with ProcessPoolExecutor(max_workers=num_cores) as executor:
         print(f"Number of workers being used: {executor._max_workers}")
         stars_solutions = list(executor.map(compute_for_rho_c, rho_c_values))
+        # Save to a pickle file
+        pickle_file_path = 'stars_solutions.pkl'  # You can choose any file name
+        with open(pickle_file_path, 'wb') as file:
+            pickle.dump(stars_solutions, file)
+
+        print(f'Saved stars_solutions to {pickle_file_path}')
+
