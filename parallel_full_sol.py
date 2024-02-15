@@ -1,4 +1,4 @@
-
+import os
 import matplotlib
 import numpy as np
 import matplotlib.pyplot as plt
@@ -8,27 +8,20 @@ from scipy.optimize import minimize
 from EOS import NeutronStarEOS
 from ode_system import *
 from omars_little_helpers import *
-# from concurrent.futures import ProcessPoolExecutor #to parallize computations
+from concurrent.futures import ProcessPoolExecutor #to parallize computations
 
+# Detect the number of cores/processors
+num_cores = os.cpu_count()
+print(f"Number of cores detected: {num_cores}\n")
+
+# load eos, it's the same for all workers so we can keep it global
 apr_eos = NeutronStarEOS('APR')
+
 
 # define the domain for r: we start away from r=0 to avoid the TOV singularity
 r_center = 1e-15
 # slighly above all the expected radii. early termination will occur regardless
 r_rad = 2e6 
-############### let's write the script for only 1 star first ###############
-rho_c = 10**15.7
-# let's use the minimum of the potetial as our initial guess 
-a_minimized = axion_initial_guess(rho_c)
-
-# obtain the boundary conditions at r = 1e-15 cm by expanding the equations linearly
-# [a_initial_guess, a_prime_initial, nu_initial, llambda_initial, rho_initial]
-initial_conditions = create_boundary_conditions(eos_class=apr_eos,
-rho_c=rho_c,
-nu_c=1,
-lambda_c=0,
-a_c=a_minimized,
-ri=r_center)
 
 # wrap the initial solver to use the interpolated EoS
 def inside_ivp_wrapper(r, y):
@@ -39,7 +32,6 @@ def inside_ivp_wrapper(r, y):
 # IVP solver
 def solve_interior(initial_conditions):
     print("     Solving the interior....")
-
     # Solve the ivp
     sol = solve_ivp(inside_ivp_wrapper, [r_center,r_rad], initial_conditions, method='LSODA', events = stop_at_small_r_step)
 
@@ -83,9 +75,8 @@ def solve_bvp_outside(r_outside, y_initial, outside_bc_func):
 
     return sol, a_out, a_prime_out, nu_out, llambda_out
 
-optimized_sol = {}
-def continuity_cost(a_initial_guess):
-    global optimized_sol
+
+def continuity_cost(a_initial_guess, rho_c):
     # Step 1: Solve the interior problem with the current guess for a_initial
     a_initial_guess = a_initial_guess[0]
     print(f"Initial guess: {a_initial_guess}")
@@ -138,30 +129,24 @@ def continuity_cost(a_initial_guess):
     cost_a_prime = (a_prime_out[0] - a_prime_R)**2
     cost = cost_a+cost_a_prime
     
-    return cost 
+    return cost, optimized_sol
 
-# Initial guess for a_initial
-a_initial_guess = initial_conditions[0]  # Use the a_initial you calculated earlier as the starting point
+def cost_wrapper(a_initial_guess, rho_c):
+        cost, optimized_sol = continuity_cost(a_initial_guess, rho_c)
+        return cost
 
-# Perform the optimization
-result = minimize(continuity_cost, a_initial_guess, method='Nelder-Mead', options={'maxiter': 100, 'xatol': 1e-9})
+def compute_for_rho_c(rho_c):
+    a_minimized = axion_initial_guess(rho_c)
+    # Wrap the call to continuity_cost so it returns only the cost to minimize
+    result = minimize(cost_wrapper, a_minimized, args=(rho_c,), method='Nelder-Mead', options={'maxiter': 100, 'xatol': 1e-9})
+    if result.success:
+        _, optimized_sol = continuity_cost(result.x[0], rho_c)  # Re-compute or retrieve the last optimized solution
+        return optimized_sol
+    else:
+        return None
 
-if result.success:
-    optimized_a_initial = result.x[0]
-    print(f"Optimized a_initial: {optimized_a_initial}")
-else:
-    print("Optimization was not successful. Try adjusting the initial guess or method.")
-# Initial guess for a_initial
-a_initial_guess = initial_conditions[0]  # Use the a_initial you calculated earlier as the starting point
-
-# Perform the optimization
-result = minimize(continuity_cost, a_initial_guess, method='Nelder-Mead', options={'maxiter': 100, 'xatol': 1e-9})
-
-if result.success:
-    optimized_a_initial = result.x[0]
-    print(f"Optimized a_initial: {optimized_a_initial}")
-else:
-    print("Optimization was not successful. Try adjusting the initial guess or method.")
-
-# Step 1: Solve the interior problem with the current guess for a_initial
-
+if __name__ == "__main__":
+    rho_c_values = [10**i for i in np.linspace(14.7, 16.25, 10)]
+    with ProcessPoolExecutor(max_workers=num_cores) as executor:
+        print(f"Number of workers being used: {executor._max_workers}")
+        stars_solutions = list(executor.map(compute_for_rho_c, rho_c_values))
