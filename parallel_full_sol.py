@@ -150,7 +150,7 @@ def compute_for_rho_c(rho_c):
     else:
         return None
 
-if __name__ == "__main__":
+"""if __name__ == "__main__":
     rho_c_values = [10**i for i in np.linspace(14.7, 15.5, num_cores)]
     with ProcessPoolExecutor(max_workers=num_cores) as executor:
         print(f"Number of workers being used: {executor._max_workers}")
@@ -162,3 +162,24 @@ if __name__ == "__main__":
 
         print(f'Saved stars_solutions to {pickle_file_path}')
 
+"""
+
+def compute_wrapper(args):
+    rho_c, index, total = args
+    result = compute_for_rho_c(rho_c)
+    print(f"Completed {index + 1}/{total} stars.")
+    return result
+
+if __name__ == "__main__":
+    rho_c_values = [10**i for i in np.linspace(14.7, 15.85, num_cores)]
+    total_stars = len(rho_c_values)
+    args_list = [(rho_c, index, total_stars) for index, rho_c in enumerate(rho_c_values)]
+
+    with ProcessPoolExecutor() as executor:
+        stars_solutions = list(executor.map(compute_wrapper, args_list))
+
+    # Save to a pickle file
+    pickle_file_path = 'stars_solutions_ma_11.pkl'
+    with open(pickle_file_path, 'wb') as file:
+        pickle.dump(stars_solutions, file)
+    print(f'Saved stars_solutions to {pickle_file_path}')
