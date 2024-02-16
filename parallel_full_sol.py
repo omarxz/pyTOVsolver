@@ -14,9 +14,27 @@ from concurrent.futures import ProcessPoolExecutor #to parallize computations
 import warnings
 
 ###########################################################################
-# is the output directiory there? if not, create one.
-output_dir = "./output"
+# save a copy of the current script since it will be modified
+pre_name = "ma28e11_mu1e21"
+output_dir = "./output/" + pre_name
+
 os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
+
+# Path to the current script
+script_path = __file__
+# Name of the script file
+script_name = os.path.basename(script_path)
+# Define the path for the copy
+copy_path = os.path.join(output_dir, script_name)
+
+# Read the current script and write its content to the new location
+with open(script_path, 'r') as original_file:
+    script_content = original_file.read()
+
+with open(copy_path, 'w') as copy_file:
+    copy_file.write(script_content)
+
+print(f"Saved a copy of the script to {copy_path}")
 ######################### uncomment and modify to change the params #########################
 #g_s_N = 6e-22
 #ode_system.mu = (NeutronMass)/(g_s_N) * PhiFaGeVToCGs
@@ -24,7 +42,6 @@ os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
 #ode_system.fa = 1e15 * PhiFaGeVToCGs
 
 num_of_stars = 40
-pre_name = "ma28e11_mu1e21_"
 # Ignore specific SciPy UserWarnings regarding tolerance levels
 warnings.filterwarnings("ignore", message="`tol` is too low, setting to 2.22e-14")
 
@@ -202,7 +219,7 @@ if __name__ == "__main__":
         futures = [executor.submit(compute_for_rho_c, rho_c) for rho_c in rho_c_values]
         results = [future.result() for future in futures if future.result() is not None]
     # Save to a pickle file
-    pickle_file_path = f"./output/{pre_name}rho_ac.pkl"
+    pickle_file_path = f"{output_dir}/{pre_name}_rho_ac.pkl"
     with open(pickle_file_path, 'wb') as file:
         pickle.dump(results, file)
     print(f"Saved dict of rho_c and a_c to {pickle_file_path}")
@@ -230,7 +247,7 @@ with ProcessPoolExecutor() as executor:
     full_solutions = list(executor.map(compute_full_solution, optimization_results))
 
 # Save the full solutions to a new pickle file for further analysis
-path_to_final_results = f"./output/{pre_name}full_star_solutions.pkl"
+path_to_final_results = f"{output_dir}/{pre_name}_full_star_solutions.pkl"
 with open(path_to_final_results, 'wb') as file:
     pickle.dump(full_solutions, file)
 
