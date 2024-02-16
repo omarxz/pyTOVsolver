@@ -8,10 +8,23 @@ from scipy.integrate import solve_ivp, solve_bvp
 from scipy.optimize import minimize
 from EOS import NeutronStarEOS
 from ode_system import *
+import ode_system
 from omars_little_helpers import *
 from concurrent.futures import ProcessPoolExecutor #to parallize computations
 import warnings
 
+###########################################################################
+# is the output directiory there? if not, create one.
+output_dir = "./output"
+os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
+######################### uncomment and modify to change the params #########################
+#g_s_N = 6e-22
+#ode_system.mu = (NeutronMass)/(g_s_N) * PhiFaGeVToCGs
+#ode_system.ma = 2.8e-12 * 1e-9 * cmToGeVInv
+#ode_system.fa = 1e15 * PhiFaGeVToCGs
+
+num_of_stars = 40
+pre_name = "ma28e11_mu1e21_"
 # Ignore specific SciPy UserWarnings regarding tolerance levels
 warnings.filterwarnings("ignore", message="`tol` is too low, setting to 2.22e-14")
 
@@ -26,7 +39,7 @@ apr_eos = NeutronStarEOS('APR')
 # define the domain for r: we start away from r=0 to avoid the TOV singularity
 r_center = 1e-15
 # slighly above all the expected radii. early termination will occur regardless
-r_rad = 2e6 
+r_rad = 3e6 
 
 # wrap the initial solver to use the interpolated EoS
 def inside_ivp_wrapper(r, y):
@@ -183,13 +196,13 @@ def compute_for_rho_c(rho_c):
         return None
 
 if __name__ == "__main__":
-    rho_c_values = [10**i for i in np.linspace(14.7, 15.85, num_cores)]
+    rho_c_values = [10**i for i in np.linspace(14.5, 16.2, num_of_stars)]
     # Use ProcessPoolExecutor to parallelize the optimization
     with ProcessPoolExecutor() as executor:
         futures = [executor.submit(compute_for_rho_c, rho_c) for rho_c in rho_c_values]
         results = [future.result() for future in futures if future.result() is not None]
     # Save to a pickle file
-    pickle_file_path = 'rho_ac_ma_11.pkl'
+    pickle_file_path = f"./output/{pre_name}rho_ac.pkl"
     with open(pickle_file_path, 'wb') as file:
         pickle.dump(results, file)
     print(f"Saved dict of rho_c and a_c to {pickle_file_path}")
@@ -197,7 +210,7 @@ if __name__ == "__main__":
 print("Optimization is complete. Now, let's calculate the full solution. Wohooooo!")
 
 # Load the contents of the pickle file
-with open('rho_ac_ma_11.pkl', 'rb') as file:
+with open(pickle_file_path, 'rb') as file:
     optimization_results = pickle.load(file)
 
 # Define a wrapper function that takes a single argument, for the executor.map method
@@ -217,7 +230,8 @@ with ProcessPoolExecutor() as executor:
     full_solutions = list(executor.map(compute_full_solution, optimization_results))
 
 # Save the full solutions to a new pickle file for further analysis
-with open('full_star_solutions.pkl', 'wb') as file:
+path_to_final_results = f"./output/{pre_name}full_star_solutions.pkl"
+with open(path_to_final_results, 'wb') as file:
     pickle.dump(full_solutions, file)
 
-print(f"Calculated full solutions for {len(full_solutions)} stars and saved to 'full_solutions.pkl'")
+print(f"Calculated full solutions for {len(full_solutions)} stars and saved to {path_to_final_results}")

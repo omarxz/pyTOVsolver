@@ -23,7 +23,7 @@ mu =(NeutronMass)/(3e-24) * PhiFaGeVToCGs # (*GeV*)
 def axion_initial_guess(rho_c):
     rho_c_over_rho_crit = (rho_c*c**2)/(fa*mu*ma**2)
     a_minimum = -np.arcsin(rho_c_over_rho_crit) 
-    if a_minimum is not np.isscalar: # for destabilization regime
+    if rho_c_over_rho_crit>1: # for destabilization regime
         a_minimum = -1.
     print(f"rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
     if rho_c_over_rho_crit<1:
