@@ -213,7 +213,7 @@ def compute_for_rho_c(rho_c):
         return None
 
 if __name__ == "__main__":
-    rho_c_values = [10**i for i in np.linspace(14.5, 16.2, num_of_stars)]
+    rho_c_values = [10**i for i in np.linspace(np.log10(4e14), np.log10(1.778e16), num_of_stars)]
     # Use ProcessPoolExecutor to parallelize the optimization
     with ProcessPoolExecutor() as executor:
         futures = [executor.submit(compute_for_rho_c, rho_c) for rho_c in rho_c_values]

@@ -6,10 +6,11 @@ from scipy.integrate import solve_ivp
 from concurrent.futures import ProcessPoolExecutor
 import pickle
 import os
-
 from ode_system import stop_at_small_r_step
 from EOS import NeutronStarEOS
 
+
+num_of_stars = 150
 # Constants
 Msun = 1.988e33
 G = 6.6743e-8
@@ -20,11 +21,24 @@ apr_eos = NeutronStarEOS('APR')
 ri = 1e-15
 rf = 2e6
 
-def GR_initial_conditions(eos_class, rho_c, ri):
-    P = eos_class.get_pressure(extrapolate=True)
-    dPdrho = eos_class.dP_dRho()
-    rho_initial = rho_c - 228.917 * ri**2
-    m_initial = 4.18879e14 * ri**3
+### for TOV expansion, we need gamma and beta. gamma is easily defined but beta is a mess
+# import some numerical solutions for beta from mathematica and interpolate instead. works as good
+data = np.genfromtxt('GR_beta_values.csv', delimiter=',')
+rho_c_for_interp = data[:, 0]  
+beta_values_for_interp = data[:, 1]  
+
+# Create the interpolation function
+beta_of_rho = interp1d(rho_c_for_interp, beta_values_for_interp, kind='cubic')
+
+def beta(rho_c):
+    return beta_of_rho(rho_c)
+
+def gamma(rho_c):
+    return 4.18879 * rho_c
+
+def GR_initial_conditions(rho_c, ri):
+    rho_initial = rho_c - beta(rho_c) * ri**2
+    m_initial = gamma(rho_c) * ri**3
     return [rho_initial, m_initial]
 
 def GR_ode_system(r, y, P, dPdRho):
@@ -47,7 +61,7 @@ def ivp_system_wrapper(r, y):
 
 def compute_GR_TOV(rho_c):
     print(f"[Worker {os.getpid()}] Starting computation for rho_c = {rho_c:.3e} g/cm^3")
-    initial_conditions = GR_initial_conditions(apr_eos, rho_c, ri)
+    initial_conditions = GR_initial_conditions(rho_c, ri)
     sol_ivp = solve_ivp(ivp_system_wrapper, (ri, rf), initial_conditions, method='RK45', events=stop_at_small_r_step)
     r_values = sol_ivp.t
     rho_values, mass_values = sol_ivp.y
@@ -63,7 +77,7 @@ def compute_GR_TOV(rho_c):
 
     result = {
         "mass": mass_ns / Msun,  # Convert to solar mass units
-        "radius": radius_ns / 1e5,  # Convert to km
+        "radius": radius_ns, 
         "rho_c": rho_c,
         "rho_values": rho_values,
         "mass_values": mass_values
@@ -75,11 +89,11 @@ if __name__ == "__main__":
     num_workers = os.cpu_count()  # Or set this to a specific number you'd like to use
     print(f"Number of workers being used: {num_workers}")
     
-    rho_c_values = [10**i for i in np.linspace(14.3, 16.25, 100)]  # Example range of rho_c
+    rho_c_values = [10**i for i in np.linspace(np.log10(4e14), np.log10(1.778e16), num_of_stars)]
     with ProcessPoolExecutor(max_workers=num_workers) as executor:
         results = list(executor.map(compute_GR_TOV, rho_c_values))
 
     # Save results
-    with open('GR_TOV_solutions.pkl', 'wb') as file:
+    with open("./output/GR_TOV_solutions.pkl", 'wb') as file:
         pickle.dump(results, file)
-    print("Saved GR TOV solutions to 'GR_TOV_solutions.pkl'")
+    print("Saved GR TOV solutions to './output/GR_TOV_solutions.pkl'")
