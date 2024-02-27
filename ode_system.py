@@ -1,4 +1,5 @@
 import numpy as np
+import os
 #
 ################# constants #################
 gToGeV = 5.62e23 # (g/GeV)*)
@@ -22,14 +23,14 @@ mu =(NeutronMass)/(3e-24) * PhiFaGeVToCGs # (*GeV*)
 ################# initial guess around the minimum #################
 def axion_initial_guess(rho_c):
     rho_c_over_rho_crit = (rho_c*c**2)/(fa*mu*ma**2)
-    a_minimum = -np.arcsin(rho_c_over_rho_crit) 
+    print(f"[{os.getpid()}] rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
     if rho_c_over_rho_crit>1: # for destabilization regime
         a_minimum = -1.
-    print(f"rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
     if rho_c_over_rho_crit<1:
-        print(f"Minima exist.")
+        a_minimum = -np.arcsin(rho_c_over_rho_crit) 
+        print(f"[{os.getpid()}] Minima exist.")
     else:
-        print('Minima do not exist; entering the destabilization regime.')
+        print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
     return a_minimum
 
 ################# calculate boundary conditions from expanding the equations to first order at small r #################
@@ -124,7 +125,7 @@ def stop_at_small_r_step(r, y):
     
     # Check if the difference is less than the threshold
     if delta_r < 1e-8 :
-        print("Event triggered: Stop at small r step")
+        print(f"[{os.getpid()}] Event triggered: Stop at small r step")
 
         return 0  # Condition met, propose to stop integration
     else:
@@ -145,7 +146,7 @@ def stop_at_rho_negative(r, y):
 
     # Check if the difference is less than the threshold
     if rho < 0:
-        print("Event triggered: Stop at negative rho")
+        print(f"[{os.getpid()}] Event triggered: Stop at negative rho")
         # Store the current value of rho
         previous_rho = rho
         return 0  # Condition met, propose to stop integration
