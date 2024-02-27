@@ -124,6 +124,8 @@ def stop_at_small_r_step(r, y):
     
     # Check if the difference is less than the threshold
     if delta_r < 1e-8 :
+        print("Event triggered: Stop at small r step")
+
         return 0  # Condition met, propose to stop integration
     else:
         return 1  # Condition not met, continue integration
@@ -133,17 +135,23 @@ stop_at_small_r_step.terminal = True
 #
 #
 ################# stop when rho<0 event ################# 
-previous_rho = [None]  # Use a list to allow modification inside the event function
+previous_rho = None  # Initialize previous_rho variable
 
 def stop_at_rho_negative(r, y):
-    # Access the global variable
-    global previous_rho
+    global previous_rho  # Access the global variable
+
+    # Extract the value of rho from y
     rho = y[-1]
 
     # Check if the difference is less than the threshold
-    if rho < 1e-8 :
+    if rho < 0:
+        print("Event triggered: Stop at negative rho")
+        # Store the current value of rho
+        previous_rho = rho
         return 0  # Condition met, propose to stop integration
     else:
+        # Update the previous_rho variable
+        previous_rho = rho
         return 1  # Condition not met, continue integration
 
 # Make the event function terminal

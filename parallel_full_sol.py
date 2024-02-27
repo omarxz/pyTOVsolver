@@ -15,9 +15,9 @@ import warnings
 
 ###########################################################################
 # save a copy of the current script since it will be modified
-pre_name = "ma28e11_mu1e21"
+pre_name = "EW_axions"
 output_dir = "./output/" + pre_name
-
+print(f"Working directiory from .py is {output_dir}")
 os.makedirs(output_dir, exist_ok=True)  # Ensure the output directory exists
 
 # Path to the current script
@@ -36,25 +36,27 @@ with open(copy_path, 'w') as copy_file:
 
 print(f"Saved a copy of the script to {copy_path}")
 ######################### uncomment and modify to change the params #########################
-#g_s_N = 6e-22
-#ode_system.mu = (NeutronMass)/(g_s_N) * PhiFaGeVToCGs
-#ode_system.ma = 2.8e-12 * 1e-9 * cmToGeVInv
-#ode_system.fa = 1e15 * PhiFaGeVToCGs
+g_s_N = 6e-22
+ode_system.mu = (NeutronMass)/(6e-22) * PhiFaGeVToCGs
+ode_system.ma = 2.8e-12 * 1e-9 * cmToGeVInv
+ode_system.fa = 1e15 * PhiFaGeVToCGs
 
-num_of_stars = 40
 # Ignore specific SciPy UserWarnings regarding tolerance levels
 warnings.filterwarnings("ignore", message="`tol` is too low, setting to 2.22e-14")
 
 # Detect the number of cores/processors
 num_cores = os.cpu_count()
+
+num_of_stars = 80
 print(f"[{os.getpid()}] Number of cores detected: {num_cores}\n")
+print(f"Working on {num_of_stars} stars")
 
 # load eos, it's the same for all workers so we can keep it global
 apr_eos = NeutronStarEOS('APR')
 
-
 # define the domain for r: we start away from r=0 to avoid the TOV singularity
 r_center = 1e-15
+
 # slighly above all the expected radii. early termination will occur regardless
 r_rad = 3e6 
 
@@ -70,45 +72,54 @@ def solve_interior(initial_conditions):
     # Solve the ivp
     sol = solve_ivp(inside_ivp_wrapper, [r_center,r_rad], initial_conditions, method='LSODA', events = stop_at_small_r_step)
 
-      # Extract boundary conditions at R from the interior solution
+    # Extract boundary conditions at R from the interior solution
     a_in = sol.y[0, :]  # a at the surface
     a_prime_in = sol.y[1, :]  # a' at the surface
     nu_in = sol.y[2, :]
     llambda_in = sol.y[3, :]
     rho = sol.y[4, :]
-    radius = sol.t_events[0][0]
     r_inside = sol.t
-    # Process the solution
+
     # Check if the solution is successful and process it
     if sol.success:
         print(f"[{os.getpid()}] IVP Solution found!")
-        print("     ",sol.message)
+        print("     ", sol.message)
+    if sol.t_events[0].size > 0:
+        event_message = sol.t_events[0][0]  # Get the message of the triggered event
+        print(f"[{os.getpid()}] Event triggered: {event_message/1e5:0.4} km")
+        radius = sol.t_events[0][0]
     else:
-        print(f"[{os.getpid()}] Solution was not successful.")
-        print(sol.message)
+        print(f"[{os.getpid()}] Warning: No events were triggered. Setting default radius value.")
+        idx_outside = np.argmin(rho)
+        print(f"[{os.getpid()}] Radius detected at rho = {rho[idx_outside]} g/cm^3 and R = {r_inside[idx_outside]/1e5} km")
+        radius = r_inside[idx_outside]
     return sol, a_in, a_prime_in, nu_in, llambda_in, rho, radius
 
-def solve_bvp_outside(r_outside, y_initial, outside_bc_func):
+def solve_bvp_outside(r_outside, y_initial, outside_bc_func, initial_tol):
     print(f"[{os.getpid()}] Solving the exterior....")
-    sol = solve_bvp(outside_bvp_system, outside_bc_func, r_outside, y_initial, max_nodes=1000000, tol=2.21e-14)
-
-    # Process the solution
-    a_out = sol.sol(r_outside)[0]
-    a_prime_out = sol.sol(r_outside)[1]
-    nu_out = sol.sol(r_outside)[2]
-    llambda_out = sol.sol(r_outside)[3]
-
-    # Check if the solution is successful and process it
-    if sol.success:
-        print(f"[{os.getpid()}] BVP Solution found!")
-    else:
-        print(f"[{os.getpid()}] Solution was not successful.")
-
-    return sol, a_out, a_prime_out, nu_out, llambda_out
+    tol = initial_tol  # Initialize the tolerance
+    while tol<=1.:
+        sol = solve_bvp(outside_bvp_system, outside_bc_func, r_outside, y_initial, max_nodes=1000000, tol=tol)
+        # store the solution
+        a_out = sol.sol(r_outside)[0]
+        a_prime_out = sol.sol(r_outside)[1]
+        nu_out = sol.sol(r_outside)[2]
+        llambda_out = sol.sol(r_outside)[3]
+    
+        # Check if the solution is successful
+        if sol.success:
+            print(f"[{os.getpid()}] BVP Solution found with tol = {tol}!")
+            return sol, a_out, a_prime_out, nu_out, llambda_out
+        else:
+            print(f"[{os.getpid()}] Solution was not successful with tolerance {tol}. Retrying with higher tolerance.")
+            tol *= 10  # Increase the tolerance by an order of magnitude
+    print(f"[{os.getpid()}] Exceeded maximum tolerance. Solution not found.")
+    return None, None, None, None, None
 
 
 def full_solve(a_c, rho_c):
-
+    # Initial tolerance value
+    initial_tol = 1e-14
     initial_conditions = create_boundary_conditions(eos_class=apr_eos,
     rho_c=rho_c,
     nu_c=1,
@@ -138,7 +149,7 @@ def full_solve(a_c, rho_c):
     y_initial[2, :] = nu_R  # nu(r)
     y_initial[3, :] = llambda_R  # llambda(r)
     # Step 2: Solve the exterior problem with these boundary conditions
-    sol_exterior, a_out, a_prime_out, nu_out, llambda_out = solve_bvp_outside(r_outside, y_initial, outside_bc_func)
+    sol_exterior, a_out, a_prime_out, nu_out, llambda_out = solve_bvp_outside(r_outside, y_initial, outside_bc_func, initial_tol)
     mass = c**2 * r_outside[-1] / (2*G) * (1. - np.exp(-llambda_out[-1]))/Msun
 
     results = {
@@ -150,6 +161,7 @@ def full_solve(a_c, rho_c):
     return results
 
 def continuity_cost(a_initial_guess, rho_c):
+    initial_tol = 1e-14
     # Step 1: Solve the interior problem with the current guess for a_initial
     if not np.isscalar(a_initial_guess):
         a_initial_guess = a_initial_guess[0]
@@ -187,15 +199,35 @@ def continuity_cost(a_initial_guess, rho_c):
     y_initial[3, :] = llambda_R  # llambda(r)
     
     # Step 2: Solve the exterior problem with these boundary conditions
-    sol_exterior, a_out, a_prime_out, nu_out, llambda_out = solve_bvp_outside(r_outside, y_initial, outside_bc_func)
+    sol_exterior, a_out, a_prime_out, nu_out, llambda_out = solve_bvp_outside(r_outside, y_initial, outside_bc_func, initial_tol)
     if not sol_exterior.success:
         return np.inf  # Penalize failed solutions heavily
     mass = c**2 * r_outside[-1] / (2*G) * (1. - np.exp(-llambda_out[-1]))/Msun
     # Compute the cost: Here, we aim for a smooth transition, so ideally, a_out[0] - a_R should be close to 0
-    # and a_prime_out[0] - a_prime_R should be close to 0. Adjust the cost function as needed.
-    cost_a = (a_out[0] - a_R)**2   # Simple squared difference
-    cost_a_prime = (a_prime_out[0] - a_prime_R)**2
-    cost = cost_a+cost_a_prime
+    if a_out[0] >= 0 or a_R >= 0:
+        return  np.inf
+
+    # Cost term ensuring a_out[-1] is close to zero
+    cost_a_out = a_out[-1]**2  # Squared difference from zero
+    print(f"MSE cost for a(r_far) = {cost_a_out:0.4e}")
+    
+    # Cost term ensuring a_prime_R and a_prime_out[0] are positive and identical
+    if a_prime_R < 0 or a_prime_out[0] < 0:
+        return  np.inf
+    else:
+        cost_a_prime = (a_prime_R - a_prime_out[0])**2
+        print(f"MSE cost for a'(R) = {cost_a_out:0.4e}")
+
+    # Calculate magnitudes of the costs
+    magnitude_a_out = np.abs(cost_a_out)
+    magnitude_a_prime = np.abs(cost_a_prime)
+
+    # Normalize the costs
+    normalized_cost_a_out = cost_a_out / (magnitude_a_out + magnitude_a_prime)
+    normalized_cost_a_prime = cost_a_prime / (magnitude_a_out + magnitude_a_prime)
+
+    # Combine the normalized costs with equal weights (50/50)
+    cost = 0.5 * normalized_cost_a_out + 0.5 * normalized_cost_a_prime
     
     return cost
 
@@ -206,10 +238,10 @@ def compute_for_rho_c(rho_c):
     # Wrap the call to continuity_cost so it returns only the cost to minimize
     result = minimize(continuity_cost, a_minimized, args=(rho_c,), method='Nelder-Mead', options={'maxiter': 100, 'xatol': 1e-9})
     if result.success:
-        print(f"[{os.getpid()}] Found a_c = {result.x[0]} for rho_c = {rho_c:0.3e} g/cm^(3)")
+        print(f"[{os.getpid()}] Found a_c = {result.x[0]} for rho_c = {rho_c:e} g/cm^(3)")
         return {'rho_c': rho_c, 'a_c': result.x[0]}
     else:
-        print(f"[{os.getpid()}] Optimization failed for rho_c = {rho_c:0.3e}")
+        print(f"[{os.getpid()}] Optimization failed for rho_c = {rho_c:e}")
         return None
 
 if __name__ == "__main__":

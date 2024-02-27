@@ -91,4 +91,5 @@ def plot_full_side_by_side(x_in, x_out, radius, y_in, y_out, y_label, subplot_in
     if y_scale == 'log':
         ax.set_yscale('log')
     ax.axvline(x=radius/1e5, linestyle='--', color='grey', linewidth=0.4, zorder=-1)
-    ax.axhline(y=0, linestyle='--', color='grey', linewidth=0.4, zorder=-1)
+    if y_in[0]!=1:
+        ax.axhline(y=0, linestyle='--', color='grey', linewidth=0.4, zorder=-1)
