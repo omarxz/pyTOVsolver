@@ -1,4 +1,5 @@
 import numpy as np
+import random
 import os
 #
 ################# constants #################
@@ -24,12 +25,11 @@ mu =(NeutronMass)/(3e-24) * PhiFaGeVToCGs # (*GeV*)
 def axion_initial_guess(rho_c):
     rho_c_over_rho_crit = (rho_c*c**2)/(fa*mu*ma**2)
     print(f"[{os.getpid()}] rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
-    if rho_c_over_rho_crit>1: # for destabilization regime
-        a_minimum = -1.
     if rho_c_over_rho_crit<1:
         a_minimum = -np.arcsin(rho_c_over_rho_crit) 
         print(f"[{os.getpid()}] Minima exist.")
     else:
+        a_minimum = random.uniform(-7, -1)
         print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
     return a_minimum
 

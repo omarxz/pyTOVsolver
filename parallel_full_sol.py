@@ -209,14 +209,14 @@ def continuity_cost(a_initial_guess, rho_c):
 
     # Cost term ensuring a_out[-1] is close to zero
     cost_a_out = a_out[-1]**2  # Squared difference from zero
-    print(f"MSE cost for a(r_far) = {cost_a_out:0.4e}")
+    print(f"[{os.getpid()}] MSE cost for a(r_far) = {cost_a_out:0.4e}")
     
     # Cost term ensuring a_prime_R and a_prime_out[0] are positive and identical
     if a_prime_R < 0 or a_prime_out[0] < 0:
         return  np.inf
     else:
         cost_a_prime = (a_prime_R - a_prime_out[0])**2
-        print(f"MSE cost for a'(R) = {cost_a_out:0.4e}")
+        print(f"[{os.getpid()}] MSE cost for a'(R) = {cost_a_out:0.4e}")
 
     # Calculate magnitudes of the costs
     magnitude_a_out = np.abs(cost_a_out)
@@ -228,7 +228,7 @@ def continuity_cost(a_initial_guess, rho_c):
 
     # Combine the normalized costs with equal weights (50/50)
     cost = 0.5 * normalized_cost_a_out + 0.5 * normalized_cost_a_prime
-    
+    print(f"[{os.getpid()}] Normalized total cost = {cost}")
     return cost
 
 
