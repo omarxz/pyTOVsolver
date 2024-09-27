@@ -22,17 +22,21 @@ mu =(NeutronMass)/(3e-24) * PhiFaGeVToCGs # (*GeV*)
 #
 # 
 ################# initial guess around the minimum #################
-def axion_initial_guess(rho_c):
+def axion_initial_guess(rho_c, g_s_N):
     rho_c_over_rho_crit = (rho_c*c**2)/(fa*mu*ma**2)
     print(f"[{os.getpid()}] rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
-    if rho_c_over_rho_crit<1:
+    if rho_c_over_rho_crit < 1:#g_s_N <= 1e-22:
         a_minimum = -np.arcsin(rho_c_over_rho_crit) 
         print(f"[{os.getpid()}] Minima exist.")
     else:
-        a_minimum = random.uniform(-7, -1)
         print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
+        if g_s_N > 1e-22 and g_s_N <= 1e-19:
+            a_minimum = - rho_c* 1e12 * gToGeV * PhiFaGeVToCGs * PhiFaGeVToCGs/(fa * mu * cmToGeVInv) * 0.3
+            print(f"[{os.getpid()}] g_s_N conidition met = {g_s_N}. a_minimum = {a_minimum}")
+        else:
+            a_minimum = random.uniform(-10, -1)
+            print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
     return a_minimum
-
 ################# calculate boundary conditions from expanding the equations to first order at small r #################
 def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c, ri, verbose=0):
     """Create a boundary conditions function with specific initial conditions."""
@@ -97,7 +101,7 @@ def inside_ivp_system(r, y, P, dPdRho):
     # TOV equation
     if rho>0:
         expression_for_TOV = - (P(rho) + c**2 * rho) * dnu_dr / 2 # GR part
-        expression_for_TOV -=  fa / mu * a_prime * (3 * P(rho) - c**2 * rho) # Axion part: change this for different theories
+        expression_for_TOV +=  (fa / (mu + a * fa)) * a_prime * (3 * P(rho) - c**2 * rho)  # correction for high coupling. A -> 1+phi/mu rather than 1
         expression_for_TOV /= dPdRho(rho) # used chain rule to take P'(r) to rho'(r)
         
         drho_dr = expression_for_TOV
@@ -167,8 +171,8 @@ def central_densities(lower_limit, upper_limit, n_points):
 def create_outside_bc(a_R, a_prime_R, nu_R, llambda_R):
     def outside_conditions(ya, yb):
         return np.array([
-            ya[0] - a_R,                 #  ya[1] a_prime(ri) = 0
-            yb[1],                 #  yb[1] a_prime(rf) = 0
+            ya[1] - a_prime_R,     #  yb[1] a_prime(R)
+            yb[0],                 #  ya[0] a_out(r_far)) = 0
             ya[2] - nu_R,    # nu(ri) = nu_initial
             ya[3] - llambda_R, # lambda(ri) = lambda_initial
         ])

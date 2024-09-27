@@ -21,10 +21,15 @@ pattern = r"Found a_c = ([-+]?\d*\.?\d+) for rho_c = ([-+]?\d*\.?\d+e[+]\d*)"
 a_c_values = []
 rho_c_values = []
 
+g_s_N = 1e-21
+ode_system.mu = (NeutronMass)/(g_s_N) * PhiFaGeVToCGs
+ode_system.ma = 2.8e-12 * 1e-9 * cmToGeVInv
+ode_system.fa = 1e15 * PhiFaGeVToCGs
+
 # Read the log file
-run = "EW_axions"
-path = f"/Users/omar/Research/Axions/pyTOVsolver/output/{run}/extract_failed_run/output_EW_axions.log"
-with open(path, "r") as file:
+pre_name = "ma12_gsN1e-21"
+path = f"/home/oramadan/Axions/pyTOVsolver/output/{pre_name}"
+with open(f"{path}/output_{pre_name}.log", "r") as file:
     # Iterate through each line in the file
     for line in file:
         # Use regex to search for the pattern in the line
@@ -41,13 +46,14 @@ with open(path, "r") as file:
 a_c_array = np.array(a_c_values)
 rho_c_array = np.array(rho_c_values)
 
+print(f"[{os.getpid()}] Number of stars found detected: {len(rho_c_array)}\n")
 # Ignore specific SciPy UserWarnings regarding tolerance levels
 warnings.filterwarnings("ignore", message="`tol` is too low, setting to 2.22e-14")
 
 # Detect the number of cores/processors
 num_cores = os.cpu_count()
 
-print(f"[{os.getpid()}] Number of cores detected: {num_cores}\n")
+print(f"Number of cores detected: {num_cores}\n")
 
 # load eos, it's the same for all workers so we can keep it global
 apr_eos = NeutronStarEOS('APR')
@@ -70,29 +76,34 @@ def solve_interior(initial_conditions):
     # Solve the ivp
     sol = solve_ivp(inside_ivp_wrapper, [r_center,r_rad], initial_conditions, method='LSODA', events = stop_at_small_r_step)
 
-      # Extract boundary conditions at R from the interior solution
+    # Extract boundary conditions at R from the interior solution
     a_in = sol.y[0, :]  # a at the surface
     a_prime_in = sol.y[1, :]  # a' at the surface
     nu_in = sol.y[2, :]
     llambda_in = sol.y[3, :]
     rho = sol.y[4, :]
-    radius = sol.t_events[0][0]
     r_inside = sol.t
-    # Process the solution
+
     # Check if the solution is successful and process it
     if sol.success:
         print(f"[{os.getpid()}] IVP Solution found!")
-        print("     ",sol.message)
+        print("     ", sol.message)
+        if sol.t_events[0].size > 0:
+            event_message = sol.t_events[0][0]  # Get the message of the triggered event
+            print(f"[{os.getpid()}] Event triggered: {event_message/1e5:0.4} km")
+            radius = sol.t_events[0][0]
     else:
-        print(f"[{os.getpid()}] Solution was not successful.")
-        print(sol.message)
+        print(f"[{os.getpid()}] Warning: No events were triggered. Setting default radius value.")
+        idx_outside = np.argmin(rho)
+        print(f"[{os.getpid()}] Radius detected at rho = {rho[idx_outside]} g/cm^3 and R = {r_inside[idx_outside]/1e5} km")
+        radius = r_inside[idx_outside]
     return sol, a_in, a_prime_in, nu_in, llambda_in, rho, radius
 
 def solve_bvp_outside(r_outside, y_initial, outside_bc_func, initial_tol):
     print(f"[{os.getpid()}] Solving the exterior....")
     tol = initial_tol  # Initialize the tolerance
     while tol<=1.:
-        sol = solve_bvp(outside_bvp_system, outside_bc_func, r_outside, y_initial, max_nodes=1000000, tol=tol)
+        sol = solve_bvp(outside_bvp_system, outside_bc_func, r_outside, y_initial, max_nodes=100000, tol=tol)
         # store the solution
         a_out = sol.sol(r_outside)[0]
         a_prime_out = sol.sol(r_outside)[1]
@@ -154,25 +165,19 @@ def full_solve(a_c, rho_c):
     return results
 
 
-path_to_pickles = f"./output/{run}/extracted_solutions.pkl"
+path_to_pickles = f"{path}/{pre_name}_full_star_solutions.pkl"
 if __name__ == "__main__":
     # Use ProcessPoolExecutor to parallelize the optimization
     with ProcessPoolExecutor() as executor:
         futures = [executor.submit(full_solve, a_c, rho_c) for a_c, rho_c in zip(a_c_array, rho_c_array)]
-        # Load existing results from the pickle file
-        try:
-            with open(path_to_pickles, 'rb') as file:
-                existing_results = pickle.load(file)
-        except FileNotFoundError:
-            existing_results = []
-        # Calculate the full solutions to save
-        for future in futures:
-            result = future.result()
-            existing_results.append(result)  # Append each star's solution
-            # Save the updated list to the pickle file
-            with open(path_to_pickles, 'wb') as file:
-                pickle.dump(existing_results, file)
-                print(f"Saved the star solutions.")
-    print("Optimization is complete and solutions have been saved.")
+        results = [future.result() for future in futures if future.result() is not None]
 
-print(f"Calculated all {len(a_c_array[:,0])} stars and saved. Wohooooo!")
+        # Load existing results from the pickle file
+        
+with open(path_to_pickles, 'wb') as file:
+    pickle.dump(results, file)
+    print(f"[{os.getpid()}] Saved the star solutions.")
+    
+print(f"[{os.getpid()}] Optimization is complete and solutions have been saved.")
+print(f"Calculated all {len(a_c_array)} stars and saved. Wohooooo!")
+
