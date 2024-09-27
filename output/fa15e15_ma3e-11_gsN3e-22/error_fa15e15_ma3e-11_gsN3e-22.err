@@ -1,0 +1,47 @@
+
+Currently Loaded Modules:
+  1) lang/Anaconda3/2023.03-1
+
+ 
+
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+/home/oramadan/.conda/envs/py3.11/lib/python3.11/site-packages/scipy/optimize/_optimize.py:917: RuntimeWarning: invalid value encountered in subtract
+  np.max(np.abs(fsim[0] - fsim[1:])) <= fatol):
+slurmstepd: error: *** JOB 1433607 ON cn-02-03-06 CANCELLED AT 2024-03-13T21:27:53 DUE TO TIME LIMIT ***

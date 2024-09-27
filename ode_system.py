@@ -29,7 +29,6 @@ def axion_initial_guess(rho_c, g_s_N):
         a_minimum = -np.arcsin(rho_c_over_rho_crit) 
         print(f"[{os.getpid()}] Minima exist.")
     else:
-        print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
         if g_s_N > 1e-22 and g_s_N <= 1e-19:
             a_minimum = - rho_c* 1e12 * gToGeV * PhiFaGeVToCGs * PhiFaGeVToCGs/(fa * mu * cmToGeVInv) * 0.3
             print(f"[{os.getpid()}] g_s_N conidition met = {g_s_N}. a_minimum = {a_minimum}")
