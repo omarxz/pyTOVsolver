@@ -1,4 +1,4 @@
-name: py3.11
+name: pyTOVSolver_venv
 channels:
   - defaults
 dependencies:

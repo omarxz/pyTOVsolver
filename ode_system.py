@@ -22,11 +22,26 @@ mu =(NeutronMass)/(3e-24) * PhiFaGeVToCGs # (*GeV*)
 #
 # 
 ################# initial guess around the minimum #################
-def axion_initial_guess(rho_c, g_s_N):
-    rho_c_over_rho_crit = (rho_c*c**2)/(fa*mu*ma**2)
+def axion_initial_guess_updated(rho_c, g_s_N, eos_class):
+    P = eos_class.get_pressure(extrapolate=True)
+    rho_c_over_rho_crit = (3 * P(rho_c) - rho_c * c**2)/(fa * mu * ma**2)
     print(f"[{os.getpid()}] rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
-    if rho_c_over_rho_crit < 1:#g_s_N <= 1e-22:
-        a_minimum = -np.arcsin(rho_c_over_rho_crit) 
+    if -1 < rho_c_over_rho_crit < 1:#g_s_N <= 1e-22:
+        a_minimum = np.arcsin(rho_c_over_rho_crit) 
+        print(f"[{os.getpid()}] Minima exist.")
+    else:
+        if g_s_N > 1e-22 and g_s_N <= 1e-19:
+            a_minimum = - rho_c* 1e12 * gToGeV * PhiFaGeVToCGs * PhiFaGeVToCGs/(fa * mu * cmToGeVInv) * 0.3
+            print(f"[{os.getpid()}] g_s_N conidition met = {g_s_N}. a_minimum = {a_minimum}")
+        else:
+            a_minimum = random.uniform(-10, -1)
+            print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
+    return a_minimum
+def axion_initial_guess(rho_c, g_s_N):
+    rho_c_over_rho_crit = rho_c * c**2/(fa * mu * ma**2)
+    print(f"[{os.getpid()}] rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
+    if -1 < rho_c_over_rho_crit < 1:#g_s_N <= 1e-22:
+        a_minimum = np.arcsin(rho_c_over_rho_crit) 
         print(f"[{os.getpid()}] Minima exist.")
     else:
         if g_s_N > 1e-22 and g_s_N <= 1e-19:
@@ -42,22 +57,20 @@ def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c, ri, verbos
     P = eos_class.get_pressure(extrapolate=True)
     dPdrho = eos_class.dP_dRho()
     nu_initial = nu_c + (4 * G * np.pi * ri**2 * \
-                            (-2 * fa**2 * ma**2 * mu - 2 * a_c * c**2 * fa * rho_c + \
-                            c**2 * mu * rho_c + 2 * fa**2 * ma**2 * mu * np.cos(a_c) + \
-                                3 * mu * P(rho_c))) / (3 * c**4 * mu)
+                            (-2 * fa**2 * ma**2  + c**2  * rho_c + 2 * fa**2 * ma**2  * np.cos(a_c) + \
+                                3 *  P(rho_c))) / (3 * c**4)
     
     llambda_initial = lambda_c + (8 * G * np.pi * ri**2 * \
-                 (fa**2 * ma**2 * mu + a_c * c**2 * fa * rho_c + c**2 * mu * rho_c -  \
-                  fa**2 * ma**2 * mu * np.cos(a_c))) / (3 * c**4 * mu)
+                                    (fa**2 * ma**2 + c**2 * rho_c -  \
+                                    fa**2 * ma**2  * np.cos(a_c))) / (3 * c**4)
     
-    rho_initial = rho_c - 1/(6 * mu * dPdrho(rho_c)) * ri**2 * (
-        (4 * G * np.pi * rho_c * \
-         (-2 * fa**2 * ma**2 * mu - 2 * a_c * c**2 * fa * rho_c + c**2 * mu * rho_c + 2 * fa**2 * ma**2 * mu * np.cos(a_c) + 3 * mu * P(rho_c))) \
-            / c**2 + (4 * G * np.pi * P(rho_c) * (-2 * fa**2 * ma**2 * mu - 2 * a_c * c**2 * fa * rho_c + \
-                                           c**2 * mu * rho_c + 2 * fa**2 * ma**2 * mu * np.cos(a_c) + 3 * mu * P(rho_c))) / c**4 \
-                                            + (c**2 * rho_c * (c**2 * rho_c + fa * ma**2 * mu * np.sin(a_c))) / mu - \
-                                                  (3 * P(rho_c) * (c**2 * rho_c + fa * ma**2 * mu * np.sin(a_c))) / mu )
-    a_initial_guess = a_c + (ri**2 * (c**2 * rho_c + fa * ma**2 * mu * np.sin(a_c))) / (6 * fa * mu)
+    rho_initial = rho_c - ri**2 * (
+            (4 * G * np.pi * mu**2 * rho_c * (-2 * fa**2 * ma**2 + c**2 * rho_c + 2 * fa**2 * ma**2 * np.cos(a_c) + 3 * P(rho_c))) / c**2
+            + (4 * G * np.pi * mu**2 * P(rho_c) * (-2 * fa**2 * ma**2 + c**2 * rho_c + 2 * fa**2 * ma**2 * np.cos(a_c) + 3 * P(rho_c))) / c**4
+            + c**2 * rho_c * (c**2 * rho_c - 3 * P(rho_c) + fa * ma**2 * mu * np.sin(a_c))
+            - 3 * P(rho_c) * (c**2 * rho_c - 3 * P(rho_c) + fa * ma**2 * mu * np.sin(a_c))
+        ) / (6 * mu**2 * dPdrho(rho_c))
+    a_initial_guess = a_c + (ri**2 * (c**2 * rho_c + fa * ma**2 * mu * np.sin(a_c) - 3 * P (rho_c))) / (6 * fa * mu)
     a_prime_initial = 0
 
     if verbose>0:
@@ -79,28 +92,25 @@ def inside_ivp_system(r, y, P, dPdRho):
     #
     #
     # Metric Potential equation
-    dnu_dr = -1/r + np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * P(rho))/c**4 - \
-                                (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2 * mu * (-1 + np.cos(a)) + \
-                                c**2 * a * rho))/(c**4 * mu) + \
-                                (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
+    dnu_dr = -1/r + np.exp(llambda)/r + (8 * np.pi * r * G * np.exp(llambda) * P(rho))/c**4 - \
+                                (8 * np.pi * r * G * np.exp(llambda) * fa**2 * ma**2 * (1 - np.cos(a)))/(c**4) + \
+                                (4 * np.pi * r * G * fa**2 * a_prime**2)/c**4
     #
     #
     # Mass equation
-    dllambda_dr = 1/r - np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * rho)/c**2 + \
-                          (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2 * mu * (-1 + np.cos(a)) + \
-                          c**2 * a * rho))/(c**4 * mu) + \
-                          (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
+    dllambda_dr = 1/r - np.exp(llambda)/r + (8 * np.pi *  r * G * np.exp(llambda) * rho)/c**4 + \
+                                (8 * np.pi * r * G * np.exp(llambda) * fa**2 * ma**2 * (1 - np.cos(a)))/(c**4) + \
+                                (4 * np.pi * r * G * fa**2 * a_prime**2)/c**4
     #
     #
     # Klein-Gordon equation (second-order turned first-order)
-    da_prime_dr = ma**2 * np.exp(llambda) * np.sin(a) + (c**2 * rho)/(mu*fa) * np.exp(llambda) + \
-                        a_prime * (-2/r + 1/2  * dllambda_dr - 1/2  * dnu_dr)
+    da_prime_dr = ma**2 * np.exp(llambda) * np.sin(a) + (c**2 * rho - 3 * P(rho))/(mu*fa) * np.exp(llambda) + \
+                        a_prime * (-2/r + 0.5 * dllambda_dr - 0.5 * dnu_dr)
     #
     #
     # TOV equation
     if rho>0:
-        expression_for_TOV = - (P(rho) + c**2 * rho) * dnu_dr / 2 # GR part
-        expression_for_TOV +=  (fa / (mu + a * fa)) * a_prime * (3 * P(rho) - c**2 * rho)  # correction for high coupling. A -> 1+phi/mu rather than 1
+        expression_for_TOV = - (P(rho) + c**2 * rho) * dnu_dr / 2  + (fa / mu) * a_prime * (3 * P(rho) - c**2 * rho)
         expression_for_TOV /= dPdRho(rho) # used chain rule to take P'(r) to rho'(r)
         
         drho_dr = expression_for_TOV
@@ -182,26 +192,26 @@ def create_outside_bc(a_R, a_prime_R, nu_R, llambda_R):
 def outside_bvp_system(r, y):
     
     a, a_prime, nu, llambda = y
-
     
+
     # Metric Potential equation
     
-    expression_for_metric_pot = -1/r + np.exp(llambda)/r  - \
-                                (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2  * (-1 + np.cos(a))))/(c**4 ) + \
-                                (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
-    #
+    expression_for_metric_pot = -1/r + np.exp(llambda)/r + \
+                                 (8 * np.exp(llambda) * fa**2 * G * ma**2 * np.pi * r *  (-1 + np.cos(a)))/(c**4) + \
+                                 (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
+    
     dnu_dr = expression_for_metric_pot
 
     # Mass equation
-    expression_for_mass = 1/r - np.exp(llambda)/r  + \
-                          (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2  * (-1 + np.cos(a))))/(c**4) + \
-                          (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
-    #
+    expression_for_mass = 1/r - np.exp(llambda)/r  - \
+                                 (8 * np.exp(llambda) * fa**2 * G * ma**2 * np.pi * r *  (-1 + np.cos(a)))/(c**4) + \
+                                 (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
+    
     dllambda_dr = expression_for_mass
 
     # Klein-Gordon equation (second-order turned first-order)  
-    expression_for_KG = ma**2 * np.exp(llambda) * np.sin(a) +  \
-        a_prime * (-2/r + 1/2  * dllambda_dr - 1/2  * dnu_dr)
+    expression_for_KG = ma**2 * np.exp(llambda) * np.sin(a)  + \
+                         a_prime * (-2/r + 1/2  * dllambda_dr - 1/2  * dnu_dr)
     #
     da_prime_dr = expression_for_KG
 
@@ -221,23 +231,21 @@ def bvp_ode_system(r, y, P, dPdRho):
     
     
     # Metric Potential equation
-    expression_for_metric_pot = -1/r + np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * P(rho))/c**4 - \
-                                (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2 * mu * (-1 + np.cos(a)) + \
-                                c**2 * a * rho))/(c**4 * mu) + \
+    expression_for_metric_pot = -1/r + np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * P(rho))/c**4 + \
+                                (8 * np.exp(llambda) * fa**2 * G * ma**2 * np.pi * r *  (-1 + np.cos(a)))/(c**4) + \
                                 (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
     #
     dnu_dr = expression_for_metric_pot
 
     # Mass equation
-    expression_for_mass = 1/r - np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * rho)/c**2 + \
-                          (8 * np.exp(llambda) * fa * G * np.pi * r * (-fa * ma**2 * mu * (-1 + np.cos(a)) + \
-                          c**2 * a * rho))/(c**4 * mu) + \
-                          (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
+    expression_for_mass = 1/r - np.exp(llambda)/r + (8 * np.exp(llambda) * G * np.pi * r * rho)/c**4 - \
+                                (8 * np.exp(llambda) * fa**2 * G * ma**2 * np.pi * r *  (-1 + np.cos(a)))/(c**4) + \
+                                (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
     #
     dllambda_dr = expression_for_mass
 
     # Klein-Gordon equation (second-order turned first-order)
-    expression_for_KG = ma**2 * np.exp(llambda) * np.sin(a) + (c**2 * rho)/(mu*fa) * np.exp(llambda) + \
+    expression_for_KG = ma**2 * np.exp(llambda) * np.sin(a) + (c**2 * rho - 3 * P(rho))/(mu*fa) * np.exp(llambda) + \
                         a_prime * (-2/r + 1/2  * dllambda_dr - 1/2  * dnu_dr)
     #
     da_prime_dr = expression_for_KG
