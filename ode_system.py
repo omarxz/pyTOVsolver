@@ -87,14 +87,14 @@ def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c, ri, verbos
 def inside_ivp_system(r, y, P, dPdRho):
     #
     a, a_prime, nu, llambda, rho = y
-    if rho < 0 or rho > 1e20:
-        rho=0.
+    # if rho < 0 or rho > 1e20:
+    #     rho=0.
     #
     #
     # Metric Potential equation
-    dnu_dr = -1/r + np.exp(llambda)/r + (8 * np.pi * r * G * np.exp(llambda) * P(rho))/c**4 - \
+    dnu_dr = -1/r + np.exp(llambda)/r + (8 * np.pi * r * G * np.exp(llambda) * P(rho))/(c**4) - \
                                 (8 * np.pi * r * G * np.exp(llambda) * fa**2 * ma**2 * (1 - np.cos(a)))/(c**4) + \
-                                (4 * np.pi * r * G * fa**2 * a_prime**2)/c**4
+                                (4 * np.pi * r * G * fa**2 * a_prime**2)/(c**4)
     #
     #
     # Mass equation
@@ -104,13 +104,14 @@ def inside_ivp_system(r, y, P, dPdRho):
     #
     #
     # Klein-Gordon equation (second-order turned first-order)
-    da_prime_dr = ma**2 * np.exp(llambda) * np.sin(a) + (c**2 * rho - 3 * P(rho))/(mu*fa) * np.exp(llambda) + \
+    da_prime_dr = ma**2 * np.exp(llambda) * np.sin(a) + (rho * c**2 - 3 * P(rho))/(mu*fa) * np.exp(llambda) + \
                         a_prime * (-2/r + 0.5 * dllambda_dr - 0.5 * dnu_dr)
     #
     #
     # TOV equation
     if rho>0:
-        expression_for_TOV = - (P(rho) + c**2 * rho) * dnu_dr / 2  + (fa / mu) * a_prime * (3 * P(rho) - c**2 * rho)
+        expression_for_TOV = - (P(rho) + c**2 * rho) * dnu_dr / 2 
+        expression_for_TOV +=   (fa / (mu + a * fa)) * a_prime * (3 * P(rho) - c**2 * rho)
         expression_for_TOV /= dPdRho(rho) # used chain rule to take P'(r) to rho'(r)
         
         drho_dr = expression_for_TOV
@@ -192,27 +193,26 @@ def create_outside_bc(a_R, a_prime_R, nu_R, llambda_R):
 def outside_bvp_system(r, y):
     
     a, a_prime, nu, llambda = y
-    
 
     # Metric Potential equation
     
-    expression_for_metric_pot = -1/r + np.exp(llambda)/r + \
-                                 (8 * np.exp(llambda) * fa**2 * G * ma**2 * np.pi * r *  (-1 + np.cos(a)))/(c**4) + \
-                                 (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
+    expression_for_metric_pot = -1/r + np.exp(llambda)/r - \
+                                 (8 * np.pi * r * G * np.exp(llambda) * fa**2 * ma**2 * (1 - np.cos(a)))/(c**4) + \
+                                 (4 * np.pi * r * G * fa**2 * a_prime**2)/c**4
     
     dnu_dr = expression_for_metric_pot
 
     # Mass equation
-    expression_for_mass = 1/r - np.exp(llambda)/r  - \
-                                 (8 * np.exp(llambda) * fa**2 * G * ma**2 * np.pi * r *  (-1 + np.cos(a)))/(c**4) + \
-                                 (4 * fa**2 * G * np.pi * r * a_prime**2)/c**4
+    expression_for_mass = 1/r - np.exp(llambda)/r  + \
+                                 (8 * np.pi * r * G * np.exp(llambda) * fa**2 * ma**2 * (1 - np.cos(a)))/(c**4) + \
+                                 (4 * np.pi * r * G * fa**2 * a_prime**2)/c**4
     
     dllambda_dr = expression_for_mass
 
     # Klein-Gordon equation (second-order turned first-order)  
-    expression_for_KG = ma**2 * np.exp(llambda) * np.sin(a)  + \
-                         a_prime * (-2/r + 1/2  * dllambda_dr - 1/2  * dnu_dr)
-    #
+    expression_for_KG = ma**2 * np.exp(llambda) * np.sin(a) + \
+                         a_prime * (-2/r + 0.5 * dllambda_dr - 0.5 * dnu_dr)
+    
     da_prime_dr = expression_for_KG
 
 
