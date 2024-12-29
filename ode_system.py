@@ -24,18 +24,16 @@ mu =(NeutronMass)/(3e-24) * PhiFaGeVToCGs # (*GeV*)
 ################# initial guess around the minimum #################
 def axion_initial_guess_updated(rho_c, g_s_N, eos_class):
     P = eos_class.get_pressure(extrapolate=True)
-    rho_c_over_rho_crit = (3 * P(rho_c) - rho_c * c**2)/(fa * mu * ma**2)
-    print(f"[{os.getpid()}] rho_star/rho_crit = {rho_c_over_rho_crit:0.3e}")
-    if -1 < rho_c_over_rho_crit < 1:#g_s_N <= 1e-22:
-        a_minimum = np.arcsin(rho_c_over_rho_crit) 
+    minus_rho_plus_3p_over_rho_crit = (3 * P(rho_c) - rho_c * c**2)/(fa * mu * ma**2)
+    print(f"[{os.getpid()}] rho_star/rho_crit = {minus_rho_plus_3p_over_rho_crit:0.3e}")
+    if -1 < minus_rho_plus_3p_over_rho_crit < 1:#g_s_N <= 1e-22:
+        a_minimum = np.arcsin(minus_rho_plus_3p_over_rho_crit) 
         print(f"[{os.getpid()}] Minima exist.")
     else:
-        if g_s_N > 1e-22 and g_s_N <= 1e-19:
-            a_minimum = - rho_c* 1e12 * gToGeV * PhiFaGeVToCGs * PhiFaGeVToCGs/(fa * mu * cmToGeVInv) * 0.3
-            print(f"[{os.getpid()}] g_s_N conidition met = {g_s_N}. a_minimum = {a_minimum}")
-        else:
-            a_minimum = random.uniform(-10, -1)
-            print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
+        R = 1.2e6 # cm
+        a_minimum = (R**2 * (3 * P(rho_c) - rho_c * c**2))/(fa * (1+ ma**2 * R**2) * mu)
+        print(f"[{os.getpid()}] Minima do not exist; entering the destabilization regime.")
+        print(f"[{os.getpid()}] a_minimum = {a_minimum}")
     return a_minimum
 def axion_initial_guess(rho_c, g_s_N):
     rho_c_over_rho_crit = rho_c * c**2/(fa * mu * ma**2)
@@ -87,8 +85,8 @@ def create_boundary_conditions(eos_class, rho_c, nu_c, lambda_c, a_c, ri, verbos
 def inside_ivp_system(r, y, P, dPdRho):
     #
     a, a_prime, nu, llambda, rho = y
-    # if rho < 0 or rho > 1e20:
-    #     rho=0.
+    if rho < 0 or rho > 1e20:
+        rho=0.
     #
     #
     # Metric Potential equation
@@ -98,7 +96,7 @@ def inside_ivp_system(r, y, P, dPdRho):
     #
     #
     # Mass equation
-    dllambda_dr = 1/r - np.exp(llambda)/r + (8 * np.pi *  r * G * np.exp(llambda) * rho)/c**4 + \
+    dllambda_dr = 1/r - np.exp(llambda)/r + (8 * np.pi *  r * G * np.exp(llambda) * rho)/c**2 + \
                                 (8 * np.pi * r * G * np.exp(llambda) * fa**2 * ma**2 * (1 - np.cos(a)))/(c**4) + \
                                 (4 * np.pi * r * G * fa**2 * a_prime**2)/c**4
     #
